@@ -10,44 +10,38 @@ const Login = () => {
   const [role, setRole] = useState('patient');
   const [isSignUp, setIsSignUp] = useState(false);
 
- const handleAuth = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    console.log(`Attempting ${isSignUp ? 'Signup' : 'Login'} for:`, email);
+// Replace your handleAuth function in Login.jsx with this:
+const handleAuth = async (e) => {
+  e.preventDefault();
+  setLoading(true);
 
-    if (isSignUp) {
-      const { data, error } = await supabase.auth.signUp({ 
-        email, 
-        password,
-        options: {
-            data: { full_name: fullName, role: role } // This stores data in the Auth meta
-        }
-      });
-      
-      if (error) {
-        console.error("Signup Error:", error.message);
-        alert("Signup Error: " + error.message);
+  if (isSignUp) {
+    const { data: { user }, error: authError } = await supabase.auth.signUp({ email, password });
+    
+    if (authError) {
+      alert(authError.message);
+    } else if (user) {
+      // Create the profile in the "Profiles" table (Capital P)
+      const { error: profileError } = await supabase.from('profiles').insert([
+        { id: user.id, full_name: fullName, role: role }
+      ]);
+
+      if (profileError) {
+        alert("Profile Error: " + profileError.message);
       } else {
-        // Create the profile row
-        const { error: profileError } = await supabase.from('profiles').insert([
-          { id: data.user.id, full_name: fullName, role: role }
-        ]);
-        if (profileError) console.error("Profile Insert Error:", profileError);
-        alert("Signup Successful! You can now login.");
-      }
-    } else {
-      // LOGIN LOGIC
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      
-      if (error) {
-        console.error("Login Error:", error.message); // THIS WILL TELL US THE REAL PROBLEM
-        alert("Login Error: " + error.message);
-      } else {
-        console.log("Login Success:", data.user.email);
+        alert("Account created successfully! Please log in now.");
+        // FORCE LOGOUT to prevent auto-login bug
+        await supabase.auth.signOut(); 
+        setIsSignUp(false); // Move user to login screen
       }
     }
-    setLoading(false);
-  };
+  } else {
+    // Standard Login
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) alert(error.message);
+  }
+  setLoading(false);
+};
   
   return (
     <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-3xl shadow-2xl">
