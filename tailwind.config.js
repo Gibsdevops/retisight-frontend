@@ -1,21 +1,34 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    "./src/**/*.{js,jsx,ts,tsx,html}",
   ],
   theme: {
     extend: {
       colors: {
+        // Primary clinical blue
         medical: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          600: '#0284c7',
-          700: '#0369a1',
-          900: '#0c4a6e',
-        }
-      }
+          DEFAULT: "#0284c7",
+          50: "#e9f7fd",
+          100: "#d6f3fb",
+          200: "#a9e7f8",
+          300: "#7bdbf5",
+          400: "#4ecff2",
+          500: "#28bfea",
+          600: "#0284c7", // main
+          700: "#026f9f",
+          800: "#025b78",
+          900: "#014651",
+        },
+      },
+      boxShadow: {
+        'card-glow': '0 10px 30px rgba(2, 132, 199, 0.08)',
+      },
+      borderRadius: {
+        '3xl': '20px',
+      },
     },
   },
   plugins: [],
-}
+};
