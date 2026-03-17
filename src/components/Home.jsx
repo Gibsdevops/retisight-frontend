@@ -113,15 +113,46 @@ const Home = ({ onStart }) => {
       </section>
 
       {/* 3. FOOTER */}
-      <footer className="py-16 bg-slate-50 text-center border-t border-slate-200">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col items-center">
-          <div className="flex items-center gap-2 mb-4 opacity-30 grayscale">
-            <Eye size={20} />
-            <span className="font-black uppercase tracking-widest text-sm">RetiSight AI</span>
-          </div>
-          <p className="text-slate-400 text-xs tracking-[0.2em] font-bold uppercase">Empowering Clinicians • Saving Vision • © 2026</p>
+        // Add this at the bottom of Home.jsx inside the main return
+        <footer className="bg-slate-900 text-white pt-20 pb-10">
+        <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12 border-b border-slate-800 pb-12">
+            <div className="col-span-2">
+            <div className="flex items-center gap-2 mb-6">
+                <div className="bg-medical-600 p-2 rounded-lg text-white"><Eye size={20} /></div>
+                <span className="text-xl font-black uppercase tracking-widest">RetiSight AI</span>
+            </div>
+            <p className="text-slate-400 max-w-sm text-sm leading-relaxed">
+                Building the infrastructure for the next generation of tele-ophthalmology. 
+                We combine low-cost smartphone optics with state-of-the-art Deep Learning 
+                to prevent avoidable blindness globally.
+            </p>
+            </div>
+            <div>
+            <h4 className="font-bold mb-6 text-sm uppercase tracking-widest text-medical-600">Platform</h4>
+            <ul className="space-y-4 text-sm text-slate-400">
+                <li className="hover:text-white cursor-pointer transition-colors">AI Diagnostics</li>
+                <li className="hover:text-white cursor-pointer transition-colors">Doctor Portal</li>
+                <li className="hover:text-white cursor-pointer transition-colors">Patient Mobile App</li>
+            </ul>
+            </div>
+            <div>
+            <h4 className="font-bold mb-6 text-sm uppercase tracking-widest text-medical-600">Resources</h4>
+            <ul className="space-y-4 text-sm text-slate-400">
+                <li className="hover:text-white cursor-pointer transition-colors">Research Papers</li>
+                <li className="hover:text-white cursor-pointer transition-colors">Clinical Guidelines</li>
+                <li className="hover:text-white cursor-pointer transition-colors">Privacy & Security</li>
+            </ul>
+            </div>
         </div>
-      </footer>
+        <div className="max-w-6xl mx-auto px-6 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">
+            <p>© 2026 RETISIGHT SYSTEMS. ALL RIGHTS RESERVED.</p>
+            <div className="flex gap-8">
+            <span>Terms of Service</span>
+            <span>GDPR Compliance</span>
+            <span>Medical Disclaimer</span>
+            </div>
+        </div>
+</footer>
     </div>
   );
 };
