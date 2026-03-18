@@ -28,9 +28,23 @@ export default async function handler(req, res) {
     const TWILIO_API_KEY = process.env.VITE_TWILIO_API_KEY;
     const TWILIO_API_SECRET = process.env.VITE_TWILIO_API_SECRET;
 
-    if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY || !TWILIO_API_SECRET) {
-      return res.status(500).json({ error: 'Twilio credentials not configured' });
+    // Debug logging
+    console.log('🔍 Checking credentials:');
+    console.log('  ACCOUNT_SID exists:', !!TWILIO_ACCOUNT_SID);
+    console.log('  API_KEY exists:', !!TWILIO_API_KEY);
+    console.log('  API_SECRET exists:', !!TWILIO_API_SECRET);
+
+    if (!TWILIO_ACCOUNT_SID) {
+      return res.status(500).json({ error: 'VITE_TWILIO_ACCOUNT_SID not configured' });
     }
+    if (!TWILIO_API_KEY) {
+      return res.status(500).json({ error: 'VITE_TWILIO_API_KEY not configured' });
+    }
+    if (!TWILIO_API_SECRET) {
+      return res.status(500).json({ error: 'VITE_TWILIO_API_SECRET not configured' });
+    }
+
+    console.log('✅ All credentials found. Generating token...');
 
     const token = new twilio.jwt.AccessToken(
       TWILIO_ACCOUNT_SID,
@@ -45,9 +59,15 @@ export default async function handler(req, res) {
     token.addGrant(videoGrant);
     token.identity = userName;
 
-    return res.status(200).json({ token: token.toJwt() });
+    const jwt = token.toJwt();
+    console.log('✅ Token generated successfully');
+
+    return res.status(200).json({ token: jwt });
   } catch (error) {
-    console.error('Error generating token:', error);
-    return res.status(500).json({ error: 'Failed to generate token' });
+    console.error('❌ Error generating token:', error.message);
+    return res.status(500).json({ 
+      error: 'Failed to generate token',
+      details: error.message 
+    });
   }
 }
