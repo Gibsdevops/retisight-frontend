@@ -13,6 +13,11 @@ const TWILIO_ACCOUNT_SID = process.env.VITE_TWILIO_ACCOUNT_SID;
 const TWILIO_API_KEY = process.env.VITE_TWILIO_API_KEY;
 const TWILIO_API_SECRET = process.env.VITE_TWILIO_API_SECRET;
 
+console.log('🔍 Twilio Credentials Check:');
+console.log('  Account SID:', TWILIO_ACCOUNT_SID ? '✅ Loaded' : '❌ Missing');
+console.log('  API Key:', TWILIO_API_KEY ? '✅ Loaded' : '❌ Missing');
+console.log('  API Secret:', TWILIO_API_SECRET ? '✅ Loaded' : '❌ Missing');
+
 // Generate Twilio access token
 app.post('/api/twilio-token', (req, res) => {
   const { userName, roomName } = req.body;
@@ -22,6 +27,10 @@ app.post('/api/twilio-token', (req, res) => {
   }
 
   try {
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY || !TWILIO_API_SECRET) {
+      return res.status(500).json({ error: 'Twilio credentials not configured' });
+    }
+
     const token = new twilio.jwt.AccessToken(
       TWILIO_ACCOUNT_SID,
       TWILIO_API_KEY,
@@ -36,13 +45,24 @@ app.post('/api/twilio-token', (req, res) => {
     token.addGrant(videoGrant);
     token.identity = userName;
 
+    console.log('✅ Token generated for room:', roomName);
     res.json({ token: token.toJwt() });
   } catch (error) {
-    console.error('Error generating token:', error);
-    res.status(500).json({ error: 'Failed to generate token' });
+    console.error('❌ Error generating token:', error.message);
+    res.status(500).json({ error: 'Failed to generate token: ' + error.message });
   }
 });
 
-app.listen(3001, () => {
-  console.log('Twilio server running on http://localhost:3001');
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', credentials: {
+    account: !!TWILIO_ACCOUNT_SID,
+    apiKey: !!TWILIO_API_KEY,
+    apiSecret: !!TWILIO_API_SECRET
+  }});
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`✅ Twilio server running on port ${PORT}`);
 });
