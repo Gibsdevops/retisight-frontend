@@ -22,6 +22,8 @@ console.log('  API Secret:', TWILIO_API_SECRET ? '✅ Loaded' : '❌ Missing');
 app.post('/api/twilio-token', (req, res) => {
   const { userName, roomName } = req.body;
 
+  console.log('📝 Token request for:', { userName, roomName });
+
   if (!userName || !roomName) {
     return res.status(400).json({ error: 'Missing userName or roomName' });
   }
@@ -31,10 +33,15 @@ app.post('/api/twilio-token', (req, res) => {
       return res.status(500).json({ error: 'Twilio credentials not configured' });
     }
 
+    // Create token with identity in options
     const token = new twilio.jwt.AccessToken(
       TWILIO_ACCOUNT_SID,
       TWILIO_API_KEY,
-      TWILIO_API_SECRET
+      TWILIO_API_SECRET,
+      {
+        identity: userName,  // ← SET IDENTITY HERE
+        ttl: 3600
+      }
     );
 
     // Add video grant
@@ -43,9 +50,8 @@ app.post('/api/twilio-token', (req, res) => {
     });
 
     token.addGrant(videoGrant);
-    token.identity = userName;
 
-    console.log('✅ Token generated for room:', roomName);
+    console.log('✅ Token generated for:', userName, 'in room:', roomName);
     res.json({ token: token.toJwt() });
   } catch (error) {
     console.error('❌ Error generating token:', error.message);
