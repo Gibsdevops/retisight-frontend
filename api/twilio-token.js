@@ -29,10 +29,10 @@ export default async function handler(req, res) {
     const TWILIO_API_KEY = process.env.TWILIO_API_KEY || process.env.VITE_TWILIO_API_KEY;
     const TWILIO_API_SECRET = process.env.TWILIO_API_SECRET || process.env.VITE_TWILIO_API_SECRET;
 
-    console.log('🔍 Environment Check:');
-    console.log('  TWILIO_ACCOUNT_SID:', !!TWILIO_ACCOUNT_SID);
-    console.log('  TWILIO_API_KEY:', !!TWILIO_API_KEY);
-    console.log('  TWILIO_API_SECRET:', !!TWILIO_API_SECRET);
+    console.log('🔍 Verifying credentials...');
+    console.log('  Account SID:', !!TWILIO_ACCOUNT_SID);
+    console.log('  API Key:', !!TWILIO_API_KEY);
+    console.log('  API Secret:', !!TWILIO_API_SECRET);
 
     if (!TWILIO_ACCOUNT_SID) {
       return res.status(500).json({ error: 'Missing: TWILIO_ACCOUNT_SID' });
@@ -45,26 +45,33 @@ export default async function handler(req, res) {
     }
 
     console.log('✅ All credentials found');
+    console.log('📍 Generating token for:', userName, 'in room:', roomName);
 
+    // Create access token with identity specified
     const token = new twilio.jwt.AccessToken(
       TWILIO_ACCOUNT_SID,
       TWILIO_API_KEY,
-      TWILIO_API_SECRET
+      TWILIO_API_SECRET,
+      {
+        identity: userName,  // ← IMPORTANT: Set identity in options
+        ttl: 3600  // Token valid for 1 hour
+      }
     );
 
+    // Add video grant
     const videoGrant = new twilio.jwt.AccessToken.VideoGrant({
       room: roomName
     });
 
     token.addGrant(videoGrant);
-    token.identity = userName;
 
     const jwt = token.toJwt();
-    console.log('✅ Token generated successfully for:', userName);
+    console.log('✅ Token generated successfully');
 
     return res.status(200).json({ token: jwt });
   } catch (error) {
-    console.error('❌ Error:', error);
+    console.error('❌ Error generating token:', error.message);
+    console.error('Stack:', error.stack);
     return res.status(500).json({ 
       error: 'Failed to generate token',
       details: error.message 
