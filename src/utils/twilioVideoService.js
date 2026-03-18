@@ -1,84 +1,57 @@
-import { connect } from 'twilio-video';
-
 /**
- * Get access token from Vercel API
+ * Generate Google Meet link from appointment ID
  */
-export const getAccessToken = async (userName, roomName) => {
-  try {
-    // Use Vercel API endpoint (same domain as frontend)
-    const apiUrl = `/api/twilio-token`;
-
-    console.log('🔗 Fetching token from:', apiUrl);
-
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ userName, roomName })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('✅ Got token successfully');
-    return data.token;
-  } catch (error) {
-    console.error('❌ Error getting access token:', error);
-    throw error;
-  }
+export const generateGoogleMeetLink = (appointmentId) => {
+  // Create a unique meeting ID from appointment ID
+  // Remove special characters and convert to lowercase
+  const meetingId = `retisight-${appointmentId}`
+    .replace(/[^a-z0-9-]/gi, '')
+    .toLowerCase()
+    .substring(0, 25);
+  
+  return `https://meet.google.com/${meetingId}`;
 };
 
 /**
- * Join Twilio video room
+ * Open Google Meet in new window
  */
-export const joinTwilioRoom = async (token, roomName, userName) => {
-  try {
-    console.log('📹 Joining Twilio room:', roomName);
-    
-    const room = await connect(token, {
-      name: roomName,
-      audio: { name: 'microphone' },
-      video: { name: 'camera', width: 640 },
-      maxAudioBitrate: 16000,
-      maxVideoBitrate: 2500000,
-      dominantSpeakerPriority: 'high',
-      networkQuality: {
-        local: 1,
-        remote: 1
-      }
-    });
-
-    console.log('✅ Joined room:', roomName);
-    console.log('📊 Participants:', room.participants.size);
-    
-    return room;
-  } catch (error) {
-    console.error('❌ Error joining room:', error);
-    throw error;
-  }
+export const joinGoogleMeet = (appointmentId) => {
+  const meetLink = generateGoogleMeetLink(appointmentId);
+  console.log('📞 Opening Google Meet:', meetLink);
+  
+  // Open in new tab
+  window.open(meetLink, '_blank', 'noopener,noreferrer');
+  
+  return meetLink;
 };
 
 /**
- * Leave Twilio room
- */
-export const leaveTwilioRoom = (room) => {
-  if (room) {
-    room.localParticipant.tracks.forEach(trackSubscription => {
-      trackSubscription.track.stop();
-    });
-
-    room.disconnect();
-    console.log('👋 Left Twilio room');
-  }
-};
-
-/**
- * Generate room name from appointment
+ * Generate room name from appointment (kept for compatibility)
  */
 export const generateTwilioRoomName = (appointmentId) => {
   return `retisight-apt-${appointmentId}`;
+};
+
+/**
+ * Copy meeting link to clipboard
+ */
+export const copyMeetingLink = async (meetLink) => {
+  try {
+    await navigator.clipboard.writeText(meetLink);
+    console.log('✅ Meeting link copied to clipboard');
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to copy link:', error);
+    return false;
+  }
+};
+
+/**
+ * Share meeting link via email (you can implement this)
+ */
+export const shareMeetingLink = (meetLink, recipientEmail) => {
+  const subject = 'Join My Medical Consultation';
+  const body = `Please join my consultation using this Google Meet link:\n\n${meetLink}`;
+  const mailtoLink = `mailto:${recipientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = mailtoLink;
 };
