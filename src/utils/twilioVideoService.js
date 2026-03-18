@@ -1,16 +1,12 @@
 import { connect } from 'twilio-video';
 
 /**
- * Get access token from Vercel backend
- */
-/**
- * Get access token from Vercel backend
+ * Get access token from Vercel API
  */
 export const getAccessToken = async (userName, roomName) => {
   try {
-    // Get your actual Vercel domain
-    const vercelDomain = window.location.hostname; // This gets your deployed domain
-    const apiUrl = `https://${vercelDomain}/api/twilio-token`;
+    // Use Vercel API endpoint (same domain as frontend)
+    const apiUrl = `/api/twilio-token`;
 
     console.log('🔗 Fetching token from:', apiUrl);
 
@@ -23,8 +19,8 @@ export const getAccessToken = async (userName, roomName) => {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to get token');
+      const errorData = await response.json();
+      throw new Error(errorData.error || `API error: ${response.status}`);
     }
 
     const data = await response.json();
