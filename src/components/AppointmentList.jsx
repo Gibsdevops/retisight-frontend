@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
-import { subscribeToPatientAppointmentStatus } from '../utils/realtimeService';
+import { subscribeToPatientAppointmentStatus, getPatientAppointments } from '../utils/realtimeService';
 import { Clock, CheckCircle, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -11,27 +11,32 @@ const AppointmentList = () => {
 
   useEffect(() => {
     const initAppointments = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setCurrentUser(user);
 
-      // Fetch initial appointments
-      await fetchAppointments(user.id);
+        // Fetch initial appointments
+        await fetchAppointments(user.id);
 
-      // Subscribe to real-time status updates
-      const subscription = subscribeToPatientAppointmentStatus(user.id, (payload) => {
-        const { new: updatedAppointment } = payload;
-        
-        if (updatedAppointment.status === 'approved') {
-          toast.success('Doctor approved your appointment!');
-        } else if (updatedAppointment.status === 'rejected') {
-          toast.error('Doctor rejected your appointment');
-        }
-        
-        fetchAppointments(user.id);
-      });
+        // Subscribe to real-time status updates
+        const subscription = subscribeToPatientAppointmentStatus(user.id, (payload) => {
+          const { new: updatedAppointment } = payload;
+          
+          if (updatedAppointment.status === 'approved') {
+            toast.success('✅ Doctor approved your appointment!');
+          } else if (updatedAppointment.status === 'rejected') {
+            toast.error('❌ Doctor rejected your appointment');
+          }
+          
+          fetchAppointments(user.id);
+        });
 
-      setLoading(false);
-      return () => subscription.unsubscribe();
+        setLoading(false);
+        return () => subscription.unsubscribe();
+      } catch (err) {
+        console.error('Error initializing appointments:', err);
+        setLoading(false);
+      }
     };
 
     initAppointments();
@@ -39,19 +44,7 @@ const AppointmentList = () => {
 
   const fetchAppointments = async (patientId) => {
     try {
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          id,
-          status,
-          created_at,
-          doctor_id,
-          Profiles!appointments_doctor_id_fkey(full_name)
-        `)
-        .eq('patient_id', patientId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await getPatientAppointments(patientId);
       setAppointments(data || []);
     } catch (err) {
       console.error('Error fetching appointments:', err);
@@ -105,9 +98,9 @@ const AppointmentList = () => {
                 </div>
               </div>
               <p className="text-xs font-bold uppercase text-slate-600 mt-2">
-                {apt.status === 'pending' && 'Waiting for approval'}
-                {apt.status === 'approved' && 'Approved - Ready for consultation'}
-                {apt.status === 'rejected' && 'Rejected'}
+                {apt.status === 'pending' && '⏳ Waiting for approval'}
+                {apt.status === 'approved' && '✅ Approved - Ready for consultation'}
+                {apt.status === 'rejected' && '❌ Rejected'}
               </p>
             </div>
           ))

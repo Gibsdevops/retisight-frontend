@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
-import { subscribeToDoctorAppointments, updateAppointmentStatus } from '../utils/realtimeService';
+import { subscribeToDoctorAppointments, updateAppointmentStatus, getDoctorAppointments } from '../utils/realtimeService';
 import { CheckCircle, Video, User, Clock, LogOut, Activity, Bell, Search, Filter, TrendingUp, AlertTriangle, Calendar, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -38,35 +38,21 @@ const DoctorDashboard = ({ onLogout }) => {
   }, []);
 
   const fetchAppointments = async (doctorId) => {
-    try {
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          id, 
-          status, 
-          created_at, 
-          scheduled_at,
-          reason,
-          notes,
-          patient_id, 
-          Profiles!appointments_patient_id_fkey(full_name, id)
-        `)
-        .eq('doctor_id', doctorId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      setAppointments(data || []);
-      setStats({
-        pending: data?.filter(a => a.status === 'pending').length || 0,
-        critical: data?.filter(a => a.status === 'approved').length || 0,
-        total: data?.length || 0
-      });
-    } catch (err) {
-      console.error('Error fetching appointments:', err);
-      toast.error('Failed to load appointments');
-    }
-  };
+  try {
+    const { getDoctorAppointments } = await import('../utils/realtimeService');
+    const data = await getDoctorAppointments(doctorId);
+    
+    setAppointments(data || []);
+    setStats({
+      pending: data?.filter(a => a.status === 'pending').length || 0,
+      critical: data?.filter(a => a.status === 'approved').length || 0,
+      total: data?.length || 0
+    });
+  } catch (err) {
+    console.error('Error fetching appointments:', err);
+    toast.error('Failed to load appointments');
+  }
+};
 
   const handleApproveAppointment = async (appointmentId) => {
     setApproving(appointmentId);

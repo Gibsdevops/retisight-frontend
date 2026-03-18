@@ -52,31 +52,39 @@ const DoctorList = () => {
     e.preventDefault();
 
     if (!appointmentDate || !appointmentTime || !appointmentReason.trim()) {
-      toast.error('Please fill in all fields');
+      toast.error('⚠️ Please fill in all fields');
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const appointmentDateTime = new Date(`${appointmentDate}T${appointmentTime}`);
+      // Properly format the datetime: "YYYY-MM-DD" + "HH:mm" = "YYYY-MM-DDTHH:mm:00"
+      const appointmentDateTime = `${appointmentDate}T${appointmentTime}:00`;
+
+      console.log('Submitting appointment:', {
+        patient_id: currentUser.id,
+        doctor_id: selectedDoctor.id,
+        scheduled_at: appointmentDateTime,
+        reason: appointmentReason
+      });
 
       const appointmentData = {
         patient_id: currentUser.id,
         doctor_id: selectedDoctor.id,
         status: 'pending',
-        scheduled_at: appointmentDateTime.toISOString(),
+        scheduled_at: appointmentDateTime,
         reason: appointmentReason,
         notes: ''
       };
 
       await createAppointment(appointmentData);
       
-      toast.success(`Appointment request sent to Dr. ${selectedDoctor.full_name}!`);
+      toast.success(`✅ Appointment request sent to Dr. ${selectedDoctor.full_name}!`);
       closeModal();
     } catch (err) {
       console.error('Error creating appointment:', err);
-      toast.error('Failed to send appointment request');
+      toast.error(`❌ Failed to send appointment request: ${err.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -236,7 +244,7 @@ const DoctorList = () => {
               {/* Info Box */}
               <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
                 <p className="text-xs text-blue-700">
-                  Your appointment request will be pending until the doctor approves it. You'll receive a notification once approved.
+                  ℹ️ Your appointment request will be pending until the doctor approves it. You'll receive a notification once approved.
                 </p>
               </div>
             </motion.div>
