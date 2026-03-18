@@ -17,6 +17,7 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState('idle');
   const [connecting, setConnecting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const videoRef = useRef(null);
   const audioRef = useRef(null);
@@ -40,6 +41,7 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
         if (appointmentId) {
           const name = generateTwilioRoomName(appointmentId);
           setRoomName(name);
+          console.log('📍 Room name set:', name);
         }
       } catch (error) {
         console.error('Error setting up room:', error);
@@ -53,12 +55,17 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
   const handleStartConsultation = async () => {
     setConnecting(true);
     setConnectionStatus('connecting');
+    setErrorMessage('');
 
     try {
       console.log('🔌 Getting access token...');
-      const token = await getAccessToken(userName, roomName);
+      console.log('  Room:', roomName);
+      console.log('  User:', userName);
 
-      console.log('📞 Joining room:', roomName);
+      const token = await getAccessToken(userName, roomName);
+      console.log('✅ Token received');
+
+      console.log('📞 Joining Twilio room:', roomName);
       const newRoom = await joinTwilioRoom(token, roomName, userName);
 
       setRoom(newRoom);
@@ -69,12 +76,14 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
       const participantConnected = (participant) => {
         console.log('👤 Participant joined:', participant.name);
         setParticipants(participants => [...participants, participant]);
+        toast.success(`${participant.name} joined the call`);
       };
 
       // Handle participant left
       const participantDisconnected = (participant) => {
         console.log('👤 Participant left:', participant.name);
         setParticipants(participants => participants.filter(p => p !== participant));
+        toast.info(`${participant.name} left the call`);
       };
 
       newRoom.on('participantConnected', participantConnected);
@@ -83,10 +92,12 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
       // Set initial participants
       setParticipants(Array.from(newRoom.participants.values()));
 
-      toast.success(`✅ ${userRole === 'doctor' ? 'Waiting for patient...' : 'Connected to doctor!'}`);
+      toast.success(`✅ ${userRole === 'doctor' ? 'Waiting for patient...' : 'Connected!'}`);
     } catch (error) {
-      console.error('Error joining room:', error);
-      toast.error('❌ Failed to join room. Make sure backend is running on localhost:3001');
+      console.error('❌ Error joining room:', error);
+      const errorMsg = error.message || 'Failed to join room';
+      setErrorMessage(errorMsg);
+      toast.error(`❌ ${errorMsg}`);
       setConnectionStatus('error');
     } finally {
       setConnecting(false);
@@ -112,6 +123,7 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
     setIsInRoom(false);
     setParticipants([]);
     setConnectionStatus('idle');
+    setErrorMessage('');
     toast.success('👋 Consultation ended');
   };
 
@@ -120,8 +132,10 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
       room.localParticipant.audioTracks.forEach(trackSubscription => {
         if (isMuted) {
           trackSubscription.track.enable();
+          toast.success('🔊 Microphone on');
         } else {
           trackSubscription.track.disable();
+          toast.success('🔇 Microphone off');
         }
       });
       setIsMuted(!isMuted);
@@ -133,8 +147,10 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
       room.localParticipant.videoTracks.forEach(trackSubscription => {
         if (isVideoOn) {
           trackSubscription.track.disable();
+          toast.success('📹 Camera off');
         } else {
           trackSubscription.track.enable();
+          toast.success('📹 Camera on');
         }
       });
       setIsVideoOn(!isVideoOn);
@@ -170,10 +186,17 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
           {connectionStatus === 'error' && (
             <div className="mt-6 p-4 bg-red-100 border border-red-300 rounded-xl">
               <p className="text-red-700 text-sm font-bold mb-2">❌ Connection Failed</p>
-              <p className="text-red-600 text-xs">
-                Make sure the backend server is running: <br />
-                <code className="bg-red-200 px-2 py-1 rounded">node server.js</code>
-              </p>
+              <p className="text-red-600 text-xs mb-3">{errorMessage}</p>
+              <div className="text-red-600 text-xs text-left bg-white p-3 rounded">
+                <p className="font-bold mb-2">✅ Check these:</p>
+                <ul className="space-y-1">
+                  <li>• Vercel environment variables set correctly</li>
+                  <li>• VITE_TWILIO_ACCOUNT_SID exists</li>
+                  <li>• VITE_TWILIO_API_KEY exists</li>
+                  <li>• VITE_TWILIO_API_SECRET exists</li>
+                  <li>• Vercel deployment is active</li>
+                </ul>
+              </div>
             </div>
           )}
 
@@ -183,7 +206,8 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
               <li>✓ Webcam & microphone access</li>
               <li>✓ Good internet connection</li>
               <li>✓ Well-lit environment</li>
-              <li>✓ Backend server running (port 3001)</li>
+              <li>✓ Vercel deployment active</li>
+              <li>✓ Twilio credentials configured</li>
             </ul>
           </div>
         </div>
@@ -191,19 +215,21 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
     );
   }
 
-  // After joining
+  // After joining - Video Call UI
   return (
     <div className="max-w-6xl mx-auto">
       <div className="bg-black rounded-[2rem] overflow-hidden shadow-2xl">
         {/* Participants Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-900 min-h-[500px]">
           {/* Local Participant */}
-          <Participant
-            key="local"
-            participant={room.localParticipant}
-            isLocal={true}
-            userName={userName}
-          />
+          {room && (
+            <Participant
+              key="local"
+              participant={room.localParticipant}
+              isLocal={true}
+              userName={userName}
+            />
+          )}
 
           {/* Remote Participants */}
           {participants.map(participant => (
@@ -217,11 +243,11 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
 
           {/* Waiting message */}
           {participants.length === 0 && (
-            <div className="flex items-center justify-center bg-slate-800 rounded-xl">
+            <div className="flex items-center justify-center bg-slate-800 rounded-xl col-span-1 md:col-span-2">
               <div className="text-center">
                 <Users className="text-slate-500 mx-auto mb-3" size={32} />
                 <p className="text-slate-400 text-sm">
-                  {userRole === 'doctor' ? 'Waiting for patient...' : 'Waiting for doctor...'}
+                  {userRole === 'doctor' ? '⏳ Waiting for patient to join...' : '⏳ Waiting for doctor to join...'}
                 </p>
               </div>
             </div>
@@ -249,7 +275,7 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
                 ? 'bg-red-600 text-white hover:bg-red-700'
                 : 'bg-slate-700 text-white hover:bg-slate-600'
             }`}
-            title={isVideoOn ? 'Turn off video' : 'Turn on video'}
+            title={isVideoOn ? 'Turn off camera' : 'Turn on camera'}
           >
             {isVideoOn ? <Video size={20} /> : <VideoOff size={20} />}
           </button>
@@ -267,7 +293,7 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
 
         {/* Status Bar */}
         <div className="bg-slate-800 px-6 py-3 text-center text-slate-300 text-sm">
-          <span>Room: {roomName} | Participants: {participants.length + 1}</span>
+          <span>🎥 Room: {roomName} | 👥 Participants: {participants.length + 1}</span>
         </div>
       </div>
     </div>
