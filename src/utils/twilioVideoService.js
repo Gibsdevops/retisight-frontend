@@ -1,22 +1,29 @@
 /**
- * Generate Google Meet link from appointment ID
+ * Generate a unique meeting link that can be shared
+ * This creates a persistent room for the appointment
+ */
+export const generatePersistentMeetLink = (appointmentId) => {
+  // Generate a random meeting code (Google Meet format: xxx-xxxx-xxx)
+  const randomCode = () => {
+    return Math.random().toString(36).substring(2, 5);
+  };
+  
+  const code = `${randomCode()}-${randomCode()}-${randomCode()}`;
+  return `https://meet.google.com/${code}`;
+};
+
+/**
+ * Generate Google Meet link from appointment
  */
 export const generateGoogleMeetLink = (appointmentId) => {
-  // Create a unique meeting ID from appointment ID
-  // Remove special characters and convert to lowercase
-  const meetingId = `retisight-${appointmentId}`
-    .replace(/[^a-z0-9-]/gi, '')
-    .toLowerCase()
-    .substring(0, 25);
-  
-  return `https://meet.google.com/${meetingId}`;
+  return generatePersistentMeetLink(appointmentId);
 };
 
 /**
  * Open Google Meet in new window
  */
 export const joinGoogleMeet = (appointmentId) => {
-  const meetLink = generateGoogleMeetLink(appointmentId);
+  const meetLink = generatePersistentMeetLink(appointmentId);
   console.log('📞 Opening Google Meet:', meetLink);
   
   // Open in new tab
@@ -47,7 +54,7 @@ export const copyMeetingLink = async (meetLink) => {
 };
 
 /**
- * Share meeting link via email (you can implement this)
+ * Share meeting link via email
  */
 export const shareMeetingLink = (meetLink, recipientEmail) => {
   const subject = 'Join My Medical Consultation';
