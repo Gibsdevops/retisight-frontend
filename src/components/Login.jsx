@@ -20,7 +20,7 @@ const handleAuth = async (e) => {
     
     if (authError) {
       alert(authError.message);
-    } else if (user) {
+    } else if (user) {s
       // Create the profile in the "Profiles" table (Capital P)
       const { error: profileError } = await supabase.from('profiles').insert([
         { id: user.id, full_name: fullName, role: role }
