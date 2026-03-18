@@ -1,211 +1,96 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../utils/supabaseClient';
-import { initializePeer, getPeerId, initiateCall, answerCall, closePeer, getPeer } from '../utils/peerService';
-import { startVideoSession, updatePatientPeerId, getVideoSessionDetails, subscribeToVideoSession, endVideoSession } from '../utils/videoSessionService';
-import { Video, Phone, Mic, MicOff, VideoOff, Copy, LogOut, AlertCircle } from 'lucide-react';
+import { getAccessToken, joinTwilioRoom, leaveTwilioRoom, generateTwilioRoomName } from '../utils/twilioVideoService';
+import { endVideoSession } from '../utils/videoSessionService';
+import { Video, Phone, Mic, MicOff, VideoOff, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import Participant from './Participant';
 
 const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, userRole = 'patient' }) => {
-  const [roomId, setRoomId] = useState('');
-  const [peerId, setPeerId] = useState('');
-  const [remotePeerId, setRemotePeerId] = useState('');
+  const [roomName, setRoomName] = useState('');
+  const [userName, setUserName] = useState('');
+  const [room, setRoom] = useState(null);
+  const [participants, setParticipants] = useState([]);
   const [isInRoom, setIsInRoom] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
-  const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('idle');
-  const [currentCall, setCurrentCall] = useState(null);
-  const [doctorPeerId, setDoctorPeerId] = useState('');
-  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
-  const [videoSessionDetails, setVideoSessionDetails] = useState(null);
+  const [connecting, setConnecting] = useState(false);
 
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
+  const videoRef = useRef(null);
+  const audioRef = useRef(null);
 
-  // Initialize Peer on mount
+  // Get user info and setup room name
   useEffect(() => {
-    const initPeer = async () => {
+    const setupRoom = async () => {
       try {
-        console.log('🔧 Initializing PeerJS...');
-        const peerInstance = await initializePeer();
-        const myPeerId = peerInstance.id;
-        setPeerId(myPeerId);
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
 
-        // Listen for incoming calls
-        peerInstance.on('call', (incomingCall) => {
-          console.log('📞 Incoming call from:', incomingCall.peer);
-          handleIncomingCall(incomingCall);
-        });
-
-        // If patient, subscribe to video session updates
-        if (appointmentId && userRole === 'patient') {
-          subscribeToVideoSession(appointmentId, async (updatedAppointment) => {
-            console.log('📹 Video session updated:', updatedAppointment);
-            if (updatedAppointment.doctor_peer_id && !autoConnectAttempted) {
-              setDoctorPeerId(updatedAppointment.doctor_peer_id);
-              toast.success('🎉 Doctor is waiting! Auto-connecting...');
-              // Auto-connect to doctor
-              setTimeout(() => {
-                connectToDoctor(updatedAppointment.doctor_peer_id);
-              }, 1000);
-            }
-          });
+          setUserName(profile?.full_name || 'User');
         }
 
-        // If doctor, start the video session
-        if (appointmentId && userRole === 'doctor' && myPeerId) {
-          console.log('👨‍⚕️ Doctor starting video session...');
-          await startVideoSession(appointmentId, myPeerId);
-          toast.success('✅ Video session started! Waiting for patient...');
+        if (appointmentId) {
+          const name = generateTwilioRoomName(appointmentId);
+          setRoomName(name);
         }
       } catch (error) {
-        console.error('Error initializing peer:', error);
-        toast.error('Failed to initialize video system');
+        console.error('Error setting up room:', error);
       }
     };
 
-    initPeer();
+    setupRoom();
+  }, [appointmentId]);
 
-    return () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [appointmentId, userRole]);
-
-  const handleIncomingCall = async (incomingCall) => {
-    try {
-      console.log('📞 Answering incoming call...');
-      setRemotePeerId(incomingCall.peer);
-
-      if (!localStream) {
-        console.error('No local stream available');
-        incomingCall.close();
-        return;
-      }
-
-      const call = answerCall(incomingCall, localStream);
-      setCurrentCall(call);
-
-      call.on('stream', (remoteStreamData) => {
-        console.log('✅ Received remote stream');
-        setRemoteStream(remoteStreamData);
-        setConnectionStatus('connected');
-        toast.success('✅ Connected!');
-      });
-
-      call.on('close', () => {
-        console.log('Call closed');
-        setRemoteStream(null);
-      });
-
-      call.on('error', (err) => {
-        console.error('Call error:', err);
-      });
-    } catch (error) {
-      console.error('Error handling incoming call:', error);
-      toast.error('Failed to answer call');
-    }
-  };
-
-  const generateRoomId = () => {
-    if (appointmentId) {
-      return `apt-${appointmentId}`;
-    }
-    return `room-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  };
-
+  // Join room when user starts consultation
   const handleStartConsultation = async () => {
+    setConnecting(true);
+    setConnectionStatus('connecting');
+
     try {
-      setConnectionStatus('connecting');
+      console.log('🔌 Getting access token...');
+      const token = await getAccessToken(userName, roomName);
 
-      console.log('📹 Requesting camera and microphone access...');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: true
-      });
+      console.log('📞 Joining room:', roomName);
+      const newRoom = await joinTwilioRoom(token, roomName, userName);
 
-      setLocalStream(stream);
-
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
-
-      const newRoomId = generateRoomId();
-      setRoomId(newRoomId);
+      setRoom(newRoom);
       setIsInRoom(true);
       setConnectionStatus('connected');
 
-      // If patient, update their Peer ID in the session
-      if (appointmentId && userRole === 'patient' && peerId) {
-        await updatePatientPeerId(appointmentId, peerId);
-      }
+      // Handle participant joined
+      const participantConnected = (participant) => {
+        console.log('👤 Participant joined:', participant.name);
+        setParticipants(participants => [...participants, participant]);
+      };
 
-      console.log('✅ Room created:', newRoomId);
-      console.log('✅ Your Peer ID:', peerId);
-      toast.success('✅ Camera & microphone ready!');
-    } catch (err) {
-      console.error('Error accessing media:', err);
+      // Handle participant left
+      const participantDisconnected = (participant) => {
+        console.log('👤 Participant left:', participant.name);
+        setParticipants(participants => participants.filter(p => p !== participant));
+      };
 
-      if (err.name === 'NotAllowedError') {
-        toast.error('❌ Camera/microphone permission denied');
-      } else if (err.name === 'NotFoundError') {
-        toast.error('❌ Camera/microphone not found');
-      } else {
-        toast.error('❌ Failed to start consultation');
-      }
+      newRoom.on('participantConnected', participantConnected);
+      newRoom.on('participantDisconnected', participantDisconnected);
+      
+      // Set initial participants
+      setParticipants(Array.from(newRoom.participants.values()));
 
-      setConnectionStatus('error');
-    }
-  };
-
-  const connectToDoctor = async (doctorId) => {
-    try {
-      if (!doctorId.trim()) {
-        toast.error('⚠️ Doctor ID not available yet');
-        return;
-      }
-
-      if (!localStream) {
-        toast.error('⚠️ Camera not enabled. Click "Start" first.');
-        return;
-      }
-
-      setConnectionStatus('calling');
-      setAutoConnectAttempted(true);
-      console.log('📞 Calling doctor:', doctorId);
-
-      const call = await initiateCall(doctorId, localStream);
-      setCurrentCall(call);
-
-      call.on('stream', (remoteStreamData) => {
-        console.log('✅ Connected to doctor!');
-        setRemoteStream(remoteStreamData);
-        setConnectionStatus('connected');
-        toast.success('✅ Connected to doctor!');
-      });
-
-      call.on('close', () => {
-        console.log('Call ended');
-        setRemoteStream(null);
-      });
-
-      call.on('error', (err) => {
-        console.error('Call error:', err);
-        toast.error('Connection error');
-        setConnectionStatus('error');
-      });
+      toast.success(`✅ ${userRole === 'doctor' ? 'Waiting for patient...' : 'Connected to doctor!'}`);
     } catch (error) {
-      console.error('Error connecting to doctor:', error);
-      toast.error('❌ Failed to connect');
+      console.error('Error joining room:', error);
+      toast.error('❌ Failed to join room. Make sure backend is running on localhost:3001');
       setConnectionStatus('error');
+    } finally {
+      setConnecting(false);
     }
-  };
-
-  const handleConnectToCall = async () => {
-    await connectToDoctor(remotePeerId);
   };
 
   const handleEndConsultation = async () => {
@@ -218,50 +103,42 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
       }
     }
 
-    // Close call
-    if (currentCall) {
-      currentCall.close();
-      setCurrentCall(null);
+    // Leave room
+    if (room) {
+      leaveTwilioRoom(room);
+      setRoom(null);
     }
 
-    // Stop all tracks
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-    }
-    if (remoteStream) {
-      remoteStream.getTracks().forEach(track => track.stop());
-    }
-
-    setLocalStream(null);
-    setRemoteStream(null);
     setIsInRoom(false);
-    setRoomId('');
-    setRemotePeerId('');
+    setParticipants([]);
     setConnectionStatus('idle');
     toast.success('👋 Consultation ended');
   };
 
   const toggleMute = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;
+    if (room) {
+      room.localParticipant.audioTracks.forEach(trackSubscription => {
+        if (isMuted) {
+          trackSubscription.track.enable();
+        } else {
+          trackSubscription.track.disable();
+        }
       });
       setIsMuted(!isMuted);
     }
   };
 
   const toggleVideo = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => {
-        track.enabled = !track.enabled;
+    if (room) {
+      room.localParticipant.videoTracks.forEach(trackSubscription => {
+        if (isVideoOn) {
+          trackSubscription.track.disable();
+        } else {
+          trackSubscription.track.enable();
+        }
       });
       setIsVideoOn(!isVideoOn);
     }
-  };
-
-  const copyPeerId = () => {
-    navigator.clipboard.writeText(peerId);
-    toast.success('📋 Your Peer ID copied to clipboard!');
   };
 
   // Before joining
@@ -273,27 +150,29 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
             <Video className="mx-auto text-medical-600 mb-4" size={48} />
             <h2 className="text-3xl font-black text-slate-900 mb-2">Live Consultation</h2>
             <p className="text-slate-500">
-              {userRole === 'doctor' ? 'Waiting for patient to join...' : 'Connect with your eye specialist'}
+              {userRole === 'doctor' ? 'Waiting for patient to join...' : 'Join your doctor for real-time consultation'}
             </p>
           </div>
 
           <button
             onClick={handleStartConsultation}
-            disabled={connectionStatus === 'connecting'}
+            disabled={connecting || !roomName}
             className={`px-12 py-6 rounded-2xl font-black text-white text-lg flex items-center gap-3 mx-auto transition-all ${
-              connectionStatus === 'connecting'
+              connecting || !roomName
                 ? 'bg-slate-400 cursor-not-allowed'
                 : 'bg-medical-600 hover:bg-medical-700'
             }`}
           >
             <Video size={24} />
-            {connectionStatus === 'connecting' ? 'Starting...' : 'Start Consultation'}
+            {connecting ? 'Joining...' : 'Join Room'}
           </button>
 
           {connectionStatus === 'error' && (
             <div className="mt-6 p-4 bg-red-100 border border-red-300 rounded-xl">
-              <p className="text-red-700 text-sm">
-                ❌ Failed to start consultation. Please check your camera/microphone permissions and try again.
+              <p className="text-red-700 text-sm font-bold mb-2">❌ Connection Failed</p>
+              <p className="text-red-600 text-xs">
+                Make sure the backend server is running: <br />
+                <code className="bg-red-200 px-2 py-1 rounded">node server.js</code>
               </p>
             </div>
           )}
@@ -302,9 +181,9 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
             <h3 className="font-bold text-slate-700 mb-4">Requirements:</h3>
             <ul className="text-left text-slate-600 space-y-2">
               <li>✓ Webcam & microphone access</li>
-              <li>✓ Good internet connection (min 1 Mbps)</li>
-              <li>✓ Well-lit environment for eye examination</li>
-              <li>✓ Private, quiet space</li>
+              <li>✓ Good internet connection</li>
+              <li>✓ Well-lit environment</li>
+              <li>✓ Backend server running (port 3001)</li>
             </ul>
           </div>
         </div>
@@ -316,120 +195,38 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
   return (
     <div className="max-w-6xl mx-auto">
       <div className="bg-black rounded-[2rem] overflow-hidden shadow-2xl">
-        {/* Video Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-900">
-          {/* Local Video */}
-          <div className="relative bg-black rounded-xl overflow-hidden aspect-video">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover"
+        {/* Participants Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-900 min-h-[500px]">
+          {/* Local Participant */}
+          <Participant
+            key="local"
+            participant={room.localParticipant}
+            isLocal={true}
+            userName={userName}
+          />
+
+          {/* Remote Participants */}
+          {participants.map(participant => (
+            <Participant
+              key={participant.sid}
+              participant={participant}
+              isLocal={false}
+              userName={participant.name}
             />
-            <div className="absolute top-3 left-3 bg-slate-900/80 px-3 py-1 rounded-lg text-white text-xs font-bold">
-              {userRole === 'doctor' ? 'You 👨‍⚕️' : 'You 👤'}
-            </div>
-            <div className={`absolute top-3 right-3 px-3 py-1 rounded-lg text-white text-xs font-bold ${
-              remoteStream ? 'bg-emerald-600' : 'bg-amber-600'
-            }`}>
-              {remoteStream ? '● Connected' : '● Waiting...'}
-            </div>
-          </div>
+          ))}
 
-          {/* Remote Video */}
-          <div className="relative bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center">
-            {remoteStream ? (
-              <>
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-cover"
-                  onLoadedMetadata={(e) => {
-                    e.target.srcObject = remoteStream;
-                  }}
-                />
-                <div className="absolute top-3 left-3 bg-slate-900/80 px-3 py-1 rounded-lg text-white text-xs font-bold">
-                  {userRole === 'doctor' ? 'Patient 👤' : 'Doctor 👨‍⚕️'}
-                </div>
-              </>
-            ) : (
+          {/* Waiting message */}
+          {participants.length === 0 && (
+            <div className="flex items-center justify-center bg-slate-800 rounded-xl">
               <div className="text-center">
-                <div className="w-16 h-16 bg-slate-700 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <Video className="text-slate-400" size={32} />
-                </div>
+                <Users className="text-slate-500 mx-auto mb-3" size={32} />
                 <p className="text-slate-400 text-sm">
-                  {userRole === 'doctor' 
-                    ? 'Waiting for patient...' 
-                    : 'Waiting for doctor...'}
+                  {userRole === 'doctor' ? 'Waiting for patient...' : 'Waiting for doctor...'}
                 </p>
-                {doctorPeerId && userRole === 'patient' && (
-                  <div className="mt-3 p-3 bg-slate-700/50 rounded-lg">
-                    <p className="text-yellow-300 text-xs mb-2">🔗 Doctor ID available!</p>
-                    <p className="text-slate-300 text-xs font-mono">{doctorPeerId.slice(0, 20)}...</p>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
-
-        {/* Peer ID Exchange (if not connected and patient waiting) */}
-        {!remoteStream && userRole === 'patient' && doctorPeerId && (
-          <div className="bg-slate-800 px-6 py-6 border-t border-slate-700">
-            <div className="flex items-center gap-3 mb-4 p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-lg">
-              <AlertCircle className="text-emerald-400" size={20} />
-              <p className="text-slate-200 text-sm">
-                <strong>Doctor is ready!</strong> Click "Connect" to join the call.
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={doctorPeerId}
-                readOnly
-                className="flex-1 px-4 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg text-xs font-mono"
-              />
-              <button
-                onClick={handleConnectToCall}
-                disabled={connectionStatus === 'calling'}
-                className={`px-6 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${
-                  connectionStatus === 'calling'
-                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-              >
-                <Phone size={16} />
-                {connectionStatus === 'calling' ? 'Connecting...' : 'Connect'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Peer ID Exchange (manual - if doctor waiting) */}
-        {!remoteStream && userRole === 'doctor' && (
-          <div className="bg-slate-800 px-6 py-6 border-t border-slate-700">
-            <p className="text-slate-300 text-sm mb-3">
-              💡 <strong>Share your Peer ID with the patient:</strong>
-            </p>
-            <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                value={peerId}
-                readOnly
-                className="flex-1 px-4 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg text-sm font-mono"
-              />
-              <button
-                onClick={copyPeerId}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-2"
-              >
-                <Copy size={16} /> Copy
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Control Bar */}
         <div className="bg-slate-900 px-6 py-6 flex flex-wrap items-center justify-center gap-4">
@@ -470,9 +267,7 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, 
 
         {/* Status Bar */}
         <div className="bg-slate-800 px-6 py-3 text-center text-slate-300 text-sm">
-          {isMuted && <span className="mr-4">🔇 Muted</span>}
-          {!isVideoOn && <span className="mr-4">📹 Camera Off</span>}
-          <span>Room: {roomId}</span>
+          <span>Room: {roomName} | Participants: {participants.length + 1}</span>
         </div>
       </div>
     </div>
