@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { subscribeToDoctorAppointments, updateAppointmentStatus, getDoctorAppointments } from '../utils/realtimeService';
-import { CheckCircle, Video, User, Clock, LogOut, Activity, Bell, Search, Filter, TrendingUp, AlertTriangle, Calendar, FileText } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { CheckCircle, Video, User, Clock, LogOut, Activity, Bell, Search, Filter, TrendingUp, AlertTriangle, Calendar, FileText, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+import LiveConsult from './LiveConsult';
 
 const DoctorDashboard = ({ onLogout }) => {
   const [appointments, setAppointments] = useState([]);
@@ -13,6 +14,8 @@ const DoctorDashboard = ({ onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [approving, setApproving] = useState(null);
+  const [showVideoCall, setShowVideoCall] = useState(false);
+  const [activeCallAppointment, setActiveCallAppointment] = useState(null);
 
   useEffect(() => {
     const initDashboard = async () => {
@@ -38,27 +41,27 @@ const DoctorDashboard = ({ onLogout }) => {
   }, []);
 
   const fetchAppointments = async (doctorId) => {
-  try {
-    const { getDoctorAppointments } = await import('../utils/realtimeService');
-    const data = await getDoctorAppointments(doctorId);
-    
-    setAppointments(data || []);
-    setStats({
-      pending: data?.filter(a => a.status === 'pending').length || 0,
-      critical: data?.filter(a => a.status === 'approved').length || 0,
-      total: data?.length || 0
-    });
-  } catch (err) {
-    console.error('Error fetching appointments:', err);
-    toast.error('Failed to load appointments');
-  }
-};
+    try {
+      const { getDoctorAppointments } = await import('../utils/realtimeService');
+      const data = await getDoctorAppointments(doctorId);
+      
+      setAppointments(data || []);
+      setStats({
+        pending: data?.filter(a => a.status === 'pending').length || 0,
+        critical: data?.filter(a => a.status === 'approved').length || 0,
+        total: data?.length || 0
+      });
+    } catch (err) {
+      console.error('Error fetching appointments:', err);
+      toast.error('Failed to load appointments');
+    }
+  };
 
   const handleApproveAppointment = async (appointmentId) => {
     setApproving(appointmentId);
     try {
       await updateAppointmentStatus(appointmentId, 'approved');
-      toast.success('Appointment approved! Patient will be notified.');
+      toast.success('✅ Appointment approved! Patient will be notified.');
       await fetchAppointments(currentUser.id);
       setSelectedAppointment(null);
     } catch (err) {
@@ -73,7 +76,7 @@ const DoctorDashboard = ({ onLogout }) => {
     setApproving(appointmentId);
     try {
       await updateAppointmentStatus(appointmentId, 'rejected');
-      toast.success('Appointment rejected');
+      toast.success('❌ Appointment rejected');
       await fetchAppointments(currentUser.id);
       setSelectedAppointment(null);
     } catch (err) {
@@ -84,9 +87,53 @@ const DoctorDashboard = ({ onLogout }) => {
     }
   };
 
+  const handleJoinCall = (appointment) => {
+    setActiveCallAppointment(appointment);
+    setShowVideoCall(true);
+    setSelectedAppointment(null);
+  };
+
+  const handleCloseVideoCall = () => {
+    setShowVideoCall(false);
+    setActiveCallAppointment(null);
+  };
+
   const filteredAppointments = appointments.filter(apt =>
     apt.Profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Show video call component if in call
+  if (showVideoCall && activeCallAppointment) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col">
+        {/* Top bar with close button */}
+        <div className="bg-black px-8 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Video className="text-medical-600" size={24} />
+            <div>
+              <h2 className="text-lg font-black text-white">Live Consultation</h2>
+              <p className="text-xs text-slate-400">with {activeCallAppointment.Profiles?.full_name}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleCloseVideoCall}
+            className="p-2 hover:bg-slate-800 rounded-lg transition-all"
+          >
+            <X size={24} className="text-slate-400 hover:text-white" />
+          </button>
+        </div>
+
+        {/* Video component */}
+        <div className="flex-1 flex items-center justify-center p-4">
+          <LiveConsult 
+            appointmentId={activeCallAppointment.id}
+            doctorId={currentUser?.id}
+            patientId={activeCallAppointment.patient_id}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -251,9 +298,9 @@ const DoctorDashboard = ({ onLogout }) => {
                               : 'bg-red-100 text-red-700'
                           }`}
                         >
-                          {apt.status === 'pending' && 'Pending'}
-                          {apt.status === 'approved' && 'Approved'}
-                          {apt.status === 'rejected' && 'Rejected'}
+                          {apt.status === 'pending' && '⏳ Pending'}
+                          {apt.status === 'approved' && '✅ Approved'}
+                          {apt.status === 'rejected' && '❌ Rejected'}
                         </span>
                       </td>
                       <td className="px-8 py-6 text-right">
@@ -268,7 +315,13 @@ const DoctorDashboard = ({ onLogout }) => {
                             Review
                           </button>
                         ) : apt.status === 'approved' ? (
-                          <button className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-black transition-all flex items-center gap-1 ml-auto">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleJoinCall(apt);
+                            }}
+                            className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-black transition-all flex items-center gap-1 ml-auto"
+                          >
                             <Video size={14} /> Join
                           </button>
                         ) : null}
@@ -289,90 +342,92 @@ const DoctorDashboard = ({ onLogout }) => {
       </main>
 
       {/* Appointment Detail Modal */}
-      {selectedAppointment && selectedAppointment.status === 'pending' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setSelectedAppointment(null)}
-        >
+      <AnimatePresence>
+        {selectedAppointment && selectedAppointment.status === 'pending' && (
           <motion.div
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8"
-            onClick={(e) => e.stopPropagation()}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedAppointment(null)}
           >
-            <h3 className="text-2xl font-black text-slate-900 mb-6">
-              Appointment Request Details
-            </h3>
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-2xl font-black text-slate-900 mb-6">
+                Appointment Request Details
+              </h3>
 
-            <div className="space-y-4 mb-6">
-              {/* Patient */}
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs text-slate-500 font-bold uppercase mb-1">Patient</p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-medical-100 rounded-full flex items-center justify-center text-medical-600 font-bold">
-                    {selectedAppointment.Profiles?.full_name?.[0]}
+              <div className="space-y-4 mb-6">
+                {/* Patient */}
+                <div className="p-4 bg-slate-50 rounded-xl">
+                  <p className="text-xs text-slate-500 font-bold uppercase mb-1">Patient</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-medical-100 rounded-full flex items-center justify-center text-medical-600 font-bold">
+                      {selectedAppointment.Profiles?.full_name?.[0]}
+                    </div>
+                    <span className="font-bold text-slate-900">{selectedAppointment.Profiles?.full_name}</span>
                   </div>
-                  <span className="font-bold text-slate-900">{selectedAppointment.Profiles?.full_name}</span>
+                </div>
+
+                {/* Requested At */}
+                <div className="p-4 bg-slate-50 rounded-xl">
+                  <p className="text-xs text-slate-500 font-bold uppercase mb-1">Request Submitted</p>
+                  <p className="text-sm text-slate-900 font-medium">
+                    {new Date(selectedAppointment.created_at).toLocaleDateString()} at{' '}
+                    {new Date(selectedAppointment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+
+                {/* Scheduled For */}
+                <div className="p-4 bg-slate-50 rounded-xl">
+                  <p className="text-xs text-slate-500 font-bold uppercase mb-1">📅 Preferred Date & Time</p>
+                  <p className="text-sm text-slate-900 font-medium">
+                    {selectedAppointment.scheduled_at
+                      ? `${new Date(selectedAppointment.scheduled_at).toLocaleDateString()} at ${new Date(selectedAppointment.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Not specified'}
+                  </p>
+                </div>
+
+                {/* Reason */}
+                <div className="p-4 bg-slate-50 rounded-xl">
+                  <p className="text-xs text-slate-500 font-bold uppercase mb-2 flex items-center gap-2">
+                    <FileText size={14} /> Reason for Visit
+                  </p>
+                  <p className="text-sm text-slate-900 font-medium">
+                    {selectedAppointment.reason || 'No reason provided'}
+                  </p>
                 </div>
               </div>
 
-              {/* Requested At */}
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs text-slate-500 font-bold uppercase mb-1">Request Submitted</p>
-                <p className="text-sm text-slate-900 font-medium">
-                  {new Date(selectedAppointment.created_at).toLocaleDateString()} at{' '}
-                  {new Date(selectedAppointment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleRejectAppointment(selectedAppointment.id)}
+                  disabled={approving === selectedAppointment.id}
+                  className="flex-1 px-4 py-3 border-2 border-red-300 text-red-700 rounded-xl font-bold hover:bg-red-50 transition-all disabled:opacity-50"
+                >
+                  ❌ Reject
+                </button>
+                <button
+                  onClick={() => handleApproveAppointment(selectedAppointment.id)}
+                  disabled={approving === selectedAppointment.id}
+                  className={`flex-1 px-4 py-3 rounded-xl font-bold text-white transition-all ${
+                    approving === selectedAppointment.id
+                      ? 'bg-slate-400 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+                >
+                  {approving === selectedAppointment.id ? '...' : '✅ Approve'}
+                </button>
               </div>
-
-              {/* Scheduled For */}
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs text-slate-500 font-bold uppercase mb-1">📅 Preferred Date & Time</p>
-                <p className="text-sm text-slate-900 font-medium">
-                  {selectedAppointment.scheduled_at
-                    ? `${new Date(selectedAppointment.scheduled_at).toLocaleDateString()} at ${new Date(selectedAppointment.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    : 'Not specified'}
-                </p>
-              </div>
-
-              {/* Reason */}
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs text-slate-500 font-bold uppercase mb-2 flex items-center gap-2">
-                  <FileText size={14} /> Reason for Visit
-                </p>
-                <p className="text-sm text-slate-900 font-medium">
-                  {selectedAppointment.reason || 'No reason provided'}
-                </p>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleRejectAppointment(selectedAppointment.id)}
-                disabled={approving === selectedAppointment.id}
-                className="flex-1 px-4 py-3 border-2 border-red-300 text-red-700 rounded-xl font-bold hover:bg-red-50 transition-all disabled:opacity-50"
-              >
-                Reject
-              </button>
-              <button
-                onClick={() => handleApproveAppointment(selectedAppointment.id)}
-                disabled={approving === selectedAppointment.id}
-                className={`flex-1 px-4 py-3 rounded-xl font-bold text-white transition-all ${
-                  approving === selectedAppointment.id
-                    ? 'bg-slate-400 cursor-not-allowed'
-                    : 'bg-emerald-600 hover:bg-emerald-700'
-                }`}
-              >
-                {approving === selectedAppointment.id ? '...' : '✅ Approve'}
-              </button>
-            </div>
+            </motion.div>
           </motion.div>
-        </motion.div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 };
