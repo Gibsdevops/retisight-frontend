@@ -24,27 +24,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    const TWILIO_ACCOUNT_SID = process.env.VITE_TWILIO_ACCOUNT_SID;
-    const TWILIO_API_KEY = process.env.VITE_TWILIO_API_KEY;
-    const TWILIO_API_SECRET = process.env.VITE_TWILIO_API_SECRET;
+    // Try both with and without VITE_ prefix
+    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || process.env.VITE_TWILIO_ACCOUNT_SID;
+    const TWILIO_API_KEY = process.env.TWILIO_API_KEY || process.env.VITE_TWILIO_API_KEY;
+    const TWILIO_API_SECRET = process.env.TWILIO_API_SECRET || process.env.VITE_TWILIO_API_SECRET;
 
-    // Debug logging
-    console.log('🔍 Checking credentials:');
-    console.log('  ACCOUNT_SID exists:', !!TWILIO_ACCOUNT_SID);
-    console.log('  API_KEY exists:', !!TWILIO_API_KEY);
-    console.log('  API_SECRET exists:', !!TWILIO_API_SECRET);
+    console.log('🔍 Environment Check:');
+    console.log('  TWILIO_ACCOUNT_SID:', !!TWILIO_ACCOUNT_SID);
+    console.log('  TWILIO_API_KEY:', !!TWILIO_API_KEY);
+    console.log('  TWILIO_API_SECRET:', !!TWILIO_API_SECRET);
 
     if (!TWILIO_ACCOUNT_SID) {
-      return res.status(500).json({ error: 'VITE_TWILIO_ACCOUNT_SID not configured' });
+      return res.status(500).json({ error: 'Missing: TWILIO_ACCOUNT_SID' });
     }
     if (!TWILIO_API_KEY) {
-      return res.status(500).json({ error: 'VITE_TWILIO_API_KEY not configured' });
+      return res.status(500).json({ error: 'Missing: TWILIO_API_KEY' });
     }
     if (!TWILIO_API_SECRET) {
-      return res.status(500).json({ error: 'VITE_TWILIO_API_SECRET not configured' });
+      return res.status(500).json({ error: 'Missing: TWILIO_API_SECRET' });
     }
 
-    console.log('✅ All credentials found. Generating token...');
+    console.log('✅ All credentials found');
 
     const token = new twilio.jwt.AccessToken(
       TWILIO_ACCOUNT_SID,
@@ -60,11 +60,11 @@ export default async function handler(req, res) {
     token.identity = userName;
 
     const jwt = token.toJwt();
-    console.log('✅ Token generated successfully');
+    console.log('✅ Token generated successfully for:', userName);
 
     return res.status(200).json({ token: jwt });
   } catch (error) {
-    console.error('❌ Error generating token:', error.message);
+    console.error('❌ Error:', error);
     return res.status(500).json({ 
       error: 'Failed to generate token',
       details: error.message 
