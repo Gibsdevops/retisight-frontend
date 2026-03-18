@@ -3,12 +3,16 @@ import { connect } from 'twilio-video';
 /**
  * Get access token from Vercel backend
  */
+/**
+ * Get access token from Vercel backend
+ */
 export const getAccessToken = async (userName, roomName) => {
   try {
-    // Use deployed URL instead of localhost
-    const apiUrl = import.meta.env.PROD 
-      ? `https://retisight-frontend.vercel.app/api/twilio-token`
-      : `http://localhost:5173/api/twilio-token`;
+    // Get your actual Vercel domain
+    const vercelDomain = window.location.hostname; // This gets your deployed domain
+    const apiUrl = `https://${vercelDomain}/api/twilio-token`;
+
+    console.log('🔗 Fetching token from:', apiUrl);
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -24,9 +28,10 @@ export const getAccessToken = async (userName, roomName) => {
     }
 
     const data = await response.json();
+    console.log('✅ Got token successfully');
     return data.token;
   } catch (error) {
-    console.error('Error getting access token:', error);
+    console.error('❌ Error getting access token:', error);
     throw error;
   }
 };
