@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { initializePeer, getPeerId, initiateCall, answerCall, closePeer, getPeer } from '../utils/peerService';
-import { Video, Phone, Mic, MicOff, VideoOff, Copy, LogOut } from 'lucide-react';
+import { startVideoSession, updatePatientPeerId, getVideoSessionDetails, subscribeToVideoSession, endVideoSession } from '../utils/videoSessionService';
+import { Video, Phone, Mic, MicOff, VideoOff, Copy, LogOut, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }) => {
+const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null, userRole = 'patient' }) => {
   const [roomId, setRoomId] = useState('');
   const [peerId, setPeerId] = useState('');
   const [remotePeerId, setRemotePeerId] = useState('');
@@ -16,7 +17,9 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
   const [remoteStream, setRemoteStream] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('idle');
   const [currentCall, setCurrentCall] = useState(null);
-  const [userRole, setUserRole] = useState('patient'); // 'doctor' or 'patient'
+  const [doctorPeerId, setDoctorPeerId] = useState('');
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
+  const [videoSessionDetails, setVideoSessionDetails] = useState(null);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -36,15 +39,27 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
           handleIncomingCall(incomingCall);
         });
 
-        // Get current user role
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
+        // If patient, subscribe to video session updates
+        if (appointmentId && userRole === 'patient') {
+          subscribeToVideoSession(appointmentId, async (updatedAppointment) => {
+            console.log('📹 Video session updated:', updatedAppointment);
+            if (updatedAppointment.doctor_peer_id && !autoConnectAttempted) {
+              setDoctorPeerId(updatedAppointment.doctor_peer_id);
+              toast.success('🎉 Doctor is waiting! Auto-connecting...');
+              // Auto-connect to doctor
+              setTimeout(() => {
+                connectToDoctor(updatedAppointment.doctor_peer_id);
+              }, 1000);
+            }
+          });
+        }
 
-        setUserRole(profile?.role || 'patient');
+        // If doctor, start the video session
+        if (appointmentId && userRole === 'doctor' && myPeerId) {
+          console.log('👨‍⚕️ Doctor starting video session...');
+          await startVideoSession(appointmentId, myPeerId);
+          toast.success('✅ Video session started! Waiting for patient...');
+        }
       } catch (error) {
         console.error('Error initializing peer:', error);
         toast.error('Failed to initialize video system');
@@ -54,12 +69,11 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
     initPeer();
 
     return () => {
-      // Cleanup on unmount
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, []);
+  }, [appointmentId, userRole]);
 
   const handleIncomingCall = async (incomingCall) => {
     try {
@@ -75,10 +89,11 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
       const call = answerCall(incomingCall, localStream);
       setCurrentCall(call);
 
-      // Handle incoming stream
       call.on('stream', (remoteStreamData) => {
         console.log('✅ Received remote stream');
         setRemoteStream(remoteStreamData);
+        setConnectionStatus('connected');
+        toast.success('✅ Connected!');
       });
 
       call.on('close', () => {
@@ -106,7 +121,6 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
     try {
       setConnectionStatus('connecting');
 
-      // Get user media
       console.log('📹 Requesting camera and microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -115,16 +129,19 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
 
       setLocalStream(stream);
 
-      // Display local video
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
-      // Generate room ID
       const newRoomId = generateRoomId();
       setRoomId(newRoomId);
       setIsInRoom(true);
       setConnectionStatus('connected');
+
+      // If patient, update their Peer ID in the session
+      if (appointmentId && userRole === 'patient' && peerId) {
+        await updatePatientPeerId(appointmentId, peerId);
+      }
 
       console.log('✅ Room created:', newRoomId);
       console.log('✅ Your Peer ID:', peerId);
@@ -144,10 +161,10 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
     }
   };
 
-  const handleConnectToCall = async () => {
+  const connectToDoctor = async (doctorId) => {
     try {
-      if (!remotePeerId.trim()) {
-        toast.error('⚠️ Please enter the other person\'s Peer ID');
+      if (!doctorId.trim()) {
+        toast.error('⚠️ Doctor ID not available yet');
         return;
       }
 
@@ -157,14 +174,14 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
       }
 
       setConnectionStatus('calling');
-      console.log('📞 Calling peer:', remotePeerId);
+      setAutoConnectAttempted(true);
+      console.log('📞 Calling doctor:', doctorId);
 
-      const call = await initiateCall(remotePeerId, localStream);
+      const call = await initiateCall(doctorId, localStream);
       setCurrentCall(call);
 
-      // Handle incoming stream
       call.on('stream', (remoteStreamData) => {
-        console.log('✅ Connected! Receiving stream from', remotePeerId);
+        console.log('✅ Connected to doctor!');
         setRemoteStream(remoteStreamData);
         setConnectionStatus('connected');
         toast.success('✅ Connected to doctor!');
@@ -181,13 +198,26 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
         setConnectionStatus('error');
       });
     } catch (error) {
-      console.error('Error connecting to call:', error);
+      console.error('Error connecting to doctor:', error);
       toast.error('❌ Failed to connect');
       setConnectionStatus('error');
     }
   };
 
-  const handleEndConsultation = () => {
+  const handleConnectToCall = async () => {
+    await connectToDoctor(remotePeerId);
+  };
+
+  const handleEndConsultation = async () => {
+    // End video session in DB
+    if (appointmentId) {
+      try {
+        await endVideoSession(appointmentId);
+      } catch (error) {
+        console.error('Error ending session:', error);
+      }
+    }
+
     // Close call
     if (currentCall) {
       currentCall.close();
@@ -242,7 +272,9 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
           <div className="mb-6">
             <Video className="mx-auto text-medical-600 mb-4" size={48} />
             <h2 className="text-3xl font-black text-slate-900 mb-2">Live Consultation</h2>
-            <p className="text-slate-500">Connect with your ophthalmologist for real-time screening</p>
+            <p className="text-slate-500">
+              {userRole === 'doctor' ? 'Waiting for patient to join...' : 'Connect with your eye specialist'}
+            </p>
           </div>
 
           <button
@@ -296,7 +328,7 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
               className="w-full h-full object-cover"
             />
             <div className="absolute top-3 left-3 bg-slate-900/80 px-3 py-1 rounded-lg text-white text-xs font-bold">
-              You {userRole === 'doctor' ? '👨‍⚕️' : '👤'}
+              {userRole === 'doctor' ? 'You 👨‍⚕️' : 'You 👤'}
             </div>
             <div className={`absolute top-3 right-3 px-3 py-1 rounded-lg text-white text-xs font-bold ${
               remoteStream ? 'bg-emerald-600' : 'bg-amber-600'
@@ -332,21 +364,55 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
                     ? 'Waiting for patient...' 
                     : 'Waiting for doctor...'}
                 </p>
-                {peerId && (
-                  <p className="text-slate-500 text-xs mt-3 px-4">
-                    Your ID: <span className="font-mono text-yellow-300">{peerId.slice(0, 12)}...</span>
-                  </p>
+                {doctorPeerId && userRole === 'patient' && (
+                  <div className="mt-3 p-3 bg-slate-700/50 rounded-lg">
+                    <p className="text-yellow-300 text-xs mb-2">🔗 Doctor ID available!</p>
+                    <p className="text-slate-300 text-xs font-mono">{doctorPeerId.slice(0, 20)}...</p>
+                  </div>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Peer ID Exchange (if not connected yet) */}
-        {!remoteStream && (
+        {/* Peer ID Exchange (if not connected and patient waiting) */}
+        {!remoteStream && userRole === 'patient' && doctorPeerId && (
+          <div className="bg-slate-800 px-6 py-6 border-t border-slate-700">
+            <div className="flex items-center gap-3 mb-4 p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-lg">
+              <AlertCircle className="text-emerald-400" size={20} />
+              <p className="text-slate-200 text-sm">
+                <strong>Doctor is ready!</strong> Click "Connect" to join the call.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={doctorPeerId}
+                readOnly
+                className="flex-1 px-4 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg text-xs font-mono"
+              />
+              <button
+                onClick={handleConnectToCall}
+                disabled={connectionStatus === 'calling'}
+                className={`px-6 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${
+                  connectionStatus === 'calling'
+                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                }`}
+              >
+                <Phone size={16} />
+                {connectionStatus === 'calling' ? 'Connecting...' : 'Connect'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Peer ID Exchange (manual - if doctor waiting) */}
+        {!remoteStream && userRole === 'doctor' && (
           <div className="bg-slate-800 px-6 py-6 border-t border-slate-700">
             <p className="text-slate-300 text-sm mb-3">
-              💡 <strong>Not connected?</strong> Share your Peer ID with the other person:
+              💡 <strong>Share your Peer ID with the patient:</strong>
             </p>
             <div className="flex gap-2 mb-4">
               <input
@@ -360,28 +426,6 @@ const LiveConsult = ({ appointmentId = null, doctorId = null, patientId = null }
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-2"
               >
                 <Copy size={16} /> Copy
-              </button>
-            </div>
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Paste their Peer ID here..."
-                value={remotePeerId}
-                onChange={(e) => setRemotePeerId(e.target.value)}
-                className="flex-1 px-4 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg text-sm font-mono placeholder-slate-500"
-              />
-              <button
-                onClick={handleConnectToCall}
-                disabled={connectionStatus === 'calling' || !remotePeerId.trim()}
-                className={`px-6 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${
-                  connectionStatus === 'calling' || !remotePeerId.trim()
-                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-              >
-                <Phone size={16} />
-                {connectionStatus === 'calling' ? 'Calling...' : 'Connect'}
               </button>
             </div>
           </div>
