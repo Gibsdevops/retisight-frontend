@@ -4,7 +4,7 @@ import { subscribeToDoctorAppointments, updateAppointmentStatus, getDoctorAppoin
 import { CheckCircle, Video, User, Clock, LogOut, Activity, Bell, Search, Filter, TrendingUp, AlertTriangle, Calendar, FileText, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import LiveConsult from './LiveConsult';
+import LiveConsult from './LiveConsultAgora';
 
 const DoctorDashboard = ({ onLogout }) => {
   const [appointments, setAppointments] = useState([]);

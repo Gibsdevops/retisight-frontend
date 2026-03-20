@@ -15,10 +15,10 @@ export const endVideoSession = async (appointmentId) => {
 
     if (error) throw error;
 
-    console.log('✅ Video session ended for appointment:', appointmentId);
+    console.log('Video session ended for appointment:', appointmentId);
     return true;
   } catch (error) {
-    console.error('❌ Error ending video session:', error);
+    console.error('Error ending video session:', error);
     throw error;
   }
 };
@@ -38,10 +38,10 @@ export const startVideoSession = async (appointmentId) => {
 
     if (error) throw error;
 
-    console.log('✅ Video session started for appointment:', appointmentId);
+    console.log('Video session started for appointment:', appointmentId);
     return true;
   } catch (error) {
-    console.error('❌ Error starting video session:', error);
+    console.error('Error starting video session:', error);
     throw error;
   }
 };

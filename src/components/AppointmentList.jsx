@@ -4,7 +4,7 @@ import { subscribeToPatientAppointmentStatus, getPatientAppointments } from '../
 import { Clock, CheckCircle, XCircle, Video, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import LiveConsult from './LiveConsult';
+import LiveConsult from './LiveConsultAgora';
 import { fromJSON } from 'postcss';
 
 const AppointmentList = () => {

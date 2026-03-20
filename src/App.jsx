@@ -6,7 +6,7 @@ import { supabase } from './utils/supabaseClient';
 // Components
 import Navbar from './components/Navbar';
 import AIScreening from './components/AIScreening';
-import LiveConsult from './components/LiveConsult';
+import LiveConsult from './components/LiveConsultAgora';
 import AppointmentList from './components/AppointmentList';
 import DoctorList from './components/DoctorList';
 import Login from './components/Login';
