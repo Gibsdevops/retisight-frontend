@@ -57,42 +57,12 @@ serve(async (req) => {
   try {
     const { channelName, userId } = await req.json()
 
-    const appId = Deno.env.get("AGORA_APP_ID")
-    const appCertificate = Deno.env.get("AGORA_APP_CERTIFICATE")
-
-    if (!appId || !appCertificate) {
-      console.error("❌ Missing Agora credentials")
-      return new Response(
-        JSON.stringify({ error: "Missing Agora credentials" }),
-        { status: 400, headers: corsHeaders }
-      )
-    }
-
-    if (!channelName || !userId) {
-      return new Response(
-        JSON.stringify({ error: "Missing channelName or userId" }),
-        { status: 400, headers: corsHeaders }
-      )
-    }
-
-    const expirationTimeInSeconds = 24 * 3600
-    const uid = parseInt(userId) || Math.floor(Math.random() * 100000)
-
-    console.log(`📝 Generating token for: ${channelName} (uid: ${uid})`)
-
-    const token = await generateRtcToken(
-      appId,
-      appCertificate,
-      channelName,
-      uid,
-      expirationTimeInSeconds
-    )
-
+    // TEMPORARY: Return a dummy token to test
     return new Response(
       JSON.stringify({ 
-        token, 
-        expirationTimeInSeconds,
-        uid
+        token: "006BxF6UZnfDlAAAAIACP0d2CW8XwEAEAANi2EQEApsBgAoD/wAAIACP0d2CW8XAAQB0D/wAAIACP0d2CW8X", 
+        expirationTimeInSeconds: 3600,
+        uid: Math.floor(Math.random() * 100000)
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -100,7 +70,7 @@ serve(async (req) => {
       }
     )
   } catch (error) {
-    console.error("❌ Error generating token:", error)
+    console.error("❌ Error:", error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: corsHeaders }
