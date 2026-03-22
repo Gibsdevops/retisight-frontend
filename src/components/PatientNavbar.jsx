@@ -2,9 +2,10 @@ import React from 'react';
 import { Eye, LogOut } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 
-const Navbar = ({ activeTab, setActiveTab }) => {
+const PatientNavbar = ({ activeTab, setActiveTab, onLogout }) => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    onLogout();
   };
 
   return (
@@ -30,7 +31,11 @@ const Navbar = ({ activeTab, setActiveTab }) => {
             </button>
           ))}
         </div>
-        <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors">
+        <button 
+          onClick={handleLogout} 
+          className="text-slate-400 hover:text-red-500 transition-colors"
+          title="Logout"
+        >
           <LogOut size={20} />
         </button>
       </div>
@@ -38,4 +43,4 @@ const Navbar = ({ activeTab, setActiveTab }) => {
   );
 };
 
-export default Navbar;
+export default PatientNavbar;
