@@ -6,19 +6,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, content-type",
 }
 
-async function generateTokenWithHmac(
+async function generateRtcToken(
   appId: string,
   appCertificate: string,
   channelName: string,
   uid: number,
-  expirationTime: number
+  expirationTimeInSeconds: number
 ): Promise<string> {
   const encoder = new TextEncoder()
   
-  // Create signature
-  const message = `${appId}${channelName}${uid}${expirationTime}`
+  const currentTime = Math.floor(Date.now() / 1000)
+  const expiredTs = currentTime + expirationTimeInSeconds
+
+  // Agora token format: appId:channelName:uid:expiredTs:signature
+  const messageToSign = `${appId}${channelName}${uid}${expiredTs}`
+  
   const key = encoder.encode(appCertificate)
-  const data = encoder.encode(message)
+  const data = encoder.encode(messageToSign)
 
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
@@ -30,12 +34,19 @@ async function generateTokenWithHmac(
 
   const signature = await crypto.subtle.sign("HMAC", cryptoKey, data)
   const signatureArray = Array.from(new Uint8Array(signature))
-  const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, "0")).join("")
+  const signatureHex = signatureArray
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("")
 
-  // Build token: appId:channelName:uid:expirationTime:signature
-  const token = `${appId}:${channelName}:${uid}:${expirationTime}:${signatureHex}`
+  // Build token: appId:uid:expiredTs:signature (IMPORTANT: NO channelName here)
+  const token = `${appId}:${uid}:${expiredTs}:${signatureHex}`
   
-  return btoa(token)
+  // Base64 encode
+  const encodedToken = btoa(token)
+  
+  console.log(`Token generated: ${encodedToken.substring(0, 20)}...`)
+  
+  return encodedToken
 }
 
 serve(async (req) => {
@@ -50,6 +61,7 @@ serve(async (req) => {
     const appCertificate = Deno.env.get("AGORA_APP_CERTIFICATE")
 
     if (!appId || !appCertificate) {
+      console.error("❌ Missing Agora credentials")
       return new Response(
         JSON.stringify({ error: "Missing Agora credentials" }),
         { status: 400, headers: corsHeaders }
@@ -65,21 +77,22 @@ serve(async (req) => {
 
     const expirationTimeInSeconds = 24 * 3600
     const uid = parseInt(userId) || Math.floor(Math.random() * 100000)
-    const expirationTime = Math.floor(Date.now() / 1000) + expirationTimeInSeconds
 
-    const token = await generateTokenWithHmac(
+    console.log(`📝 Generating token for: ${channelName} (uid: ${uid})`)
+
+    const token = await generateRtcToken(
       appId,
       appCertificate,
       channelName,
       uid,
-      expirationTime
+      expirationTimeInSeconds
     )
 
     return new Response(
       JSON.stringify({ 
         token, 
         expirationTimeInSeconds,
-        uid 
+        uid
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -87,7 +100,7 @@ serve(async (req) => {
       }
     )
   } catch (error) {
-    console.error("Error generating token:", error)
+    console.error("❌ Error generating token:", error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: corsHeaders }
