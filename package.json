@@ -23,6 +23,7 @@
     "react-dom": "^19.2.0",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.1",
+    "supabase": "^2.83.0",
     "twilio": "^5.13.0",
     "twilio-video": "^2.34.0"
   },

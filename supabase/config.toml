@@ -1,0 +1,18 @@
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+
+[realtime]
+enabled = true
+
+[auth]
+enabled = true
+
+[storage]
+enabled = true
+
+[functions.agora-token]
+verify_jwt = false
