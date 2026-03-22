@@ -5,6 +5,12 @@ let rtcClient = null;
 let localAudioTrack = null;
 let localVideoTrack = null;
 
+// Log environment variables on module load
+console.log('📋 Environment Variables on Module Load:');
+console.log('  VITE_AGORA_APP_ID:', import.meta.env.VITE_AGORA_APP_ID ? `✅ Set (${import.meta.env.VITE_AGORA_APP_ID})` : '❌ NOT SET');
+console.log('  VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL ? `✅ Set (${import.meta.env.VITE_SUPABASE_URL})` : '❌ NOT SET');
+console.log('  VITE_SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY ? `✅ Set (length: ${import.meta.env.VITE_SUPABASE_ANON_KEY.length})` : '❌ NOT SET');
+
 export const initializeAgoraClient = () => {
   rtcClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
   console.log('🔧 Agora client initialized');
@@ -29,13 +35,43 @@ export const joinAgoraChannel = async (channelName, userName) => {
     console.log('📞 Joining Agora channel:', channelName);
     console.log('👤 User:', userName);
 
+    // Check environment variables at join time
+    const appId = import.meta.env.VITE_AGORA_APP_ID;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    console.log('🔍 Environment Variables at Join Time:');
+    console.log('  VITE_AGORA_APP_ID:', appId ? `✅ ${appId}` : '❌ Missing');
+    console.log('  VITE_SUPABASE_URL:', supabaseUrl ? `✅ ${supabaseUrl}` : '❌ Missing');
+    console.log('  VITE_SUPABASE_ANON_KEY:', supabaseKey ? `✅ Present (${supabaseKey.length} chars)` : '❌ Missing');
+
+    // Throw error if missing
+    if (!appId) {
+      throw new Error('❌ VITE_AGORA_APP_ID is NOT SET in Vercel environment variables');
+    }
+
+    if (!supabaseUrl) {
+      throw new Error('❌ VITE_SUPABASE_URL is NOT SET in Vercel environment variables');
+    }
+
+    if (!supabaseKey) {
+      throw new Error('❌ VITE_SUPABASE_ANON_KEY is NOT SET in Vercel environment variables');
+    }
+
     // Generate token dynamically
+    console.log('🔄 Generating token...');
     const token = await generateAgoraToken(channelName, userName);
-    console.log('🔐 Using token: YES');
+    console.log('🔐 Token Generated:', token ? `✅ (${token.length} chars)` : '❌ Failed');
 
     const userId = Math.floor(Math.random() * 100000);
     
-    await rtcClient.join(import.meta.env.VITE_AGORA_APP_ID, channelName, token, userId);
+    console.log('📝 Final Join Parameters:');
+    console.log('  App ID:', appId);
+    console.log('  Channel:', channelName);
+    console.log('  User ID:', userId);
+    console.log('  Token:', token ? `✅ (length: ${token.length})` : '❌ INVALID');
+
+    await rtcClient.join(appId, channelName, token, userId);
     console.log('✅ Successfully joined channel');
     
     return rtcClient;
