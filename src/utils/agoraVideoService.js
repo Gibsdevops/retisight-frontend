@@ -1,221 +1,113 @@
 import AgoraRTC from 'agora-rtc-sdk-ng';
+import { generateAgoraToken } from './agoraTokenService';
 
-const APP_ID = import.meta.env.VITE_AGORA_APP_ID;
-const AGORA_TOKEN = import.meta.env.VITE_AGORA_TOKEN; // Add this line
-
-let agoraClient = null;
+let rtcClient = null;
 let localAudioTrack = null;
 let localVideoTrack = null;
 
-/**
- * Initialize Agora client
- */
 export const initializeAgoraClient = () => {
-  if (!agoraClient) {
-    agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-    console.log('🔧 Agora client initialized');
-  }
-  return agoraClient;
+  rtcClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+  console.log('🔧 Agora client initialized');
+  return rtcClient;
 };
 
-/**
- * Create local audio and video tracks
- */
 export const createLocalTracks = async () => {
   try {
     console.log('🎤 Creating local audio and video tracks...');
-    
     localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
     localVideoTrack = await AgoraRTC.createCameraVideoTrack();
-    
     console.log('✅ Local tracks created successfully');
     return { audioTrack: localAudioTrack, videoTrack: localVideoTrack };
   } catch (error) {
-    console.error('❌ Error creating local tracks:', error);
+    console.error('❌ Error creating tracks:', error);
     throw error;
   }
 };
 
-/**
- * Join Agora channel
- */
 export const joinAgoraChannel = async (channelName, userName) => {
   try {
-    if (!APP_ID) {
-      throw new Error('Agora App ID not configured. Set VITE_AGORA_APP_ID in .env.local');
-    }
-
-    const client = initializeAgoraClient();
-
     console.log('📞 Joining Agora channel:', channelName);
     console.log('👤 User:', userName);
-    console.log('🔐 Using token:', AGORA_TOKEN ? 'YES' : 'NO');
 
-    // Use token if available, otherwise null (for testing)
-    await client.join(APP_ID, channelName, AGORA_TOKEN || null, userName);
+    // Generate token dynamically
+    const token = await generateAgoraToken(channelName, userName);
+    console.log('🔐 Using token: YES');
 
-    console.log('✅ Successfully joined channel:', channelName);
-    return client;
+    const userId = Math.floor(Math.random() * 100000);
+    
+    await rtcClient.join(import.meta.env.VITE_AGORA_APP_ID, channelName, token, userId);
+    console.log('✅ Successfully joined channel');
+    
+    return rtcClient;
   } catch (error) {
     console.error('❌ Error joining Agora channel:', error);
     throw error;
   }
 };
 
-/**
- * Publish local tracks to channel
- */
 export const publishLocalTracks = async (audioTrack, videoTrack) => {
   try {
-    if (!agoraClient) {
-      throw new Error('Agora client not initialized');
-    }
-
-    console.log('📤 Publishing local tracks...');
-    await agoraClient.publish([audioTrack, videoTrack]);
-    console.log('✅ Tracks published successfully');
+    await rtcClient.publish([audioTrack, videoTrack]);
+    console.log('📤 Local tracks published');
   } catch (error) {
     console.error('❌ Error publishing tracks:', error);
     throw error;
   }
 };
 
-/**
- * Subscribe to remote user
- */
 export const subscribeToRemoteUser = async (user, mediaType) => {
   try {
-    if (!agoraClient) {
-      throw new Error('Agora client not initialized');
-    }
-
-    console.log('📥 Subscribing to remote user:', user.uid, 'mediaType:', mediaType);
-    await agoraClient.subscribe(user, mediaType);
-    console.log('✅ Subscribed to user:', user.uid);
-
-    return user;
+    await rtcClient.subscribe(user, mediaType);
+    console.log(`✅ Subscribed to ${mediaType} from ${user.uid}`);
   } catch (error) {
-    console.error('❌ Error subscribing to remote user:', error);
+    console.error('❌ Error subscribing:', error);
     throw error;
   }
 };
 
-/**
- * Toggle microphone
- */
-export const toggleMicrophone = async (enabled) => {
-  try {
-    if (localAudioTrack) {
-      await localAudioTrack.setEnabled(enabled);
-      console.log('🎤 Microphone:', enabled ? 'ON' : 'OFF');
-      return true;
-    }
-  } catch (error) {
-    console.error('❌ Error toggling microphone:', error);
-    return false;
+export const playRemoteVideo = (user, videoRef) => {
+  if (videoRef && user.videoTrack) {
+    user.videoTrack.play(videoRef);
+    console.log('📹 Remote video playing');
   }
 };
 
-/**
- * Toggle camera
- */
-export const toggleCamera = async (enabled) => {
-  try {
-    if (localVideoTrack) {
-      await localVideoTrack.setEnabled(enabled);
-      console.log('📹 Camera:', enabled ? 'ON' : 'OFF');
-      return true;
-    }
-  } catch (error) {
-    console.error('❌ Error toggling camera:', error);
-    return false;
-  }
-};
-
-/**
- * Play remote video
- */
-export const playRemoteVideo = (user, containerRef) => {
-  try {
-    if (user.videoTrack && containerRef) {
-      user.videoTrack.play(containerRef);
-      console.log('📹 Playing remote video for user:', user.uid);
-    }
-  } catch (error) {
-    console.error('❌ Error playing remote video:', error);
-  }
-};
-
-/**
- * Play remote audio
- */
 export const playRemoteAudio = (user) => {
-  try {
-    if (user.audioTrack) {
-      user.audioTrack.play();
-      console.log('🔊 Playing remote audio for user:', user.uid);
-    }
-  } catch (error) {
-    console.error('❌ Error playing remote audio:', error);
+  if (user.audioTrack) {
+    user.audioTrack.play();
   }
 };
 
-/**
- * Leave Agora channel
- */
+export const toggleMicrophone = (enabled) => {
+  if (localAudioTrack) {
+    localAudioTrack.setEnabled(enabled);
+    console.log(`🎤 Microphone: ${enabled ? 'ON' : 'OFF'}`);
+  }
+};
+
+export const toggleCamera = (enabled) => {
+  if (localVideoTrack) {
+    localVideoTrack.setEnabled(enabled);
+    console.log(`📷 Camera: ${enabled ? 'ON' : 'OFF'}`);
+  }
+};
+
 export const leaveAgoraChannel = async () => {
   try {
-    console.log('👋 Leaving Agora channel...');
+    const audioTracks = rtcClient.localAudioTracks;
+    const videoTracks = rtcClient.localVideoTracks;
 
-    // Close tracks
-    if (localAudioTrack) {
-      localAudioTrack.close();
-      localAudioTrack = null;
-    }
-    if (localVideoTrack) {
-      localVideoTrack.close();
-      localVideoTrack = null;
-    }
+    audioTracks.forEach(track => track.close());
+    videoTracks.forEach(track => track.close());
 
-    // Leave channel
-    if (agoraClient) {
-      await agoraClient.leave();
-      console.log('Left channel successfully');
-    }
+    await rtcClient.leave();
+    console.log('👋 Left Agora channel');
   } catch (error) {
-    console.error('Error leaving channel:', error);
+    console.error('❌ Error leaving channel:', error);
     throw error;
   }
 };
 
-/**
- * Get local video track
- */
-export const getLocalVideoTrack = () => {
-  return localVideoTrack;
-};
-
-/**
- * Get local audio track
- */
-export const getLocalAudioTrack = () => {
-  return localAudioTrack;
-};
-
-/**
- * Get Agora client
- */
-export const getAgoraClient = () => {
-  return agoraClient;
-};
-
-/**
- * Generate room/channel name from appointment
- */
 export const generateChannelName = (appointmentId) => {
-  // For testing, use fixed channel name
-  return `retisight-apt-test`;
-  
-  // For production, use dynamic:
-  // return `retisight-apt-${appointmentId}`;
+  return `retisight-apt-${appointmentId}`;
 };

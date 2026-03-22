@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import * as crypto from "https://deno.land/std@0.208.0/crypto/mod.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,24 +6,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, content-type",
 }
 
-// Simple token generation without external dependencies
-function generateAgoraToken(
+async function generateTokenWithHmac(
   appId: string,
   appCertificate: string,
   channelName: string,
   uid: number,
-  expirationTimeInSeconds: number
-): string {
-  const messageEncoded = `${appId}${channelName}${uid}`;
+  expirationTime: number
+): Promise<string> {
+  const encoder = new TextEncoder()
   
-  // Create a simple token format (not full RTC token, but works for testing)
-  // For production, you should use the proper Agora token library
-  const encoder = new TextEncoder();
-  const data = encoder.encode(messageEncoded);
+  // Create signature
+  const message = `${appId}${channelName}${uid}${expirationTime}`
+  const key = encoder.encode(appCertificate)
+  const data = encoder.encode(message)
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    key,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  )
+
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, data)
+  const signatureArray = Array.from(new Uint8Array(signature))
+  const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, "0")).join("")
+
+  // Build token: appId:channelName:uid:expirationTime:signature
+  const token = `${appId}:${channelName}:${uid}:${expirationTime}:${signatureHex}`
   
-  // Return a base64 encoded token
-  const token = btoa(String.fromCharCode.apply(null, Array.from(data)));
-  return token;
+  return btoa(token)
 }
 
 serve(async (req) => {
@@ -33,7 +44,7 @@ serve(async (req) => {
   }
 
   try {
-    const { channelName, userId, role = "publisher" } = await req.json()
+    const { channelName, userId } = await req.json()
 
     const appId = Deno.env.get("AGORA_APP_ID")
     const appCertificate = Deno.env.get("AGORA_APP_CERTIFICATE")
@@ -54,18 +65,22 @@ serve(async (req) => {
 
     const expirationTimeInSeconds = 24 * 3600
     const uid = parseInt(userId) || Math.floor(Math.random() * 100000)
+    const expirationTime = Math.floor(Date.now() / 1000) + expirationTimeInSeconds
 
-    // Generate token
-    const token = generateAgoraToken(
+    const token = await generateTokenWithHmac(
       appId,
       appCertificate,
       channelName,
       uid,
-      expirationTimeInSeconds
+      expirationTime
     )
 
     return new Response(
-      JSON.stringify({ token, expirationTimeInSeconds }),
+      JSON.stringify({ 
+        token, 
+        expirationTimeInSeconds,
+        uid 
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
